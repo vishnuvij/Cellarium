@@ -1,0 +1,3 @@
+# Cellarium
+
+Project scaffold placeholder
