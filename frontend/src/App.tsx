@@ -1,49 +1,145 @@
-import React, { useEffect, useState } from 'react'
-import axios from 'axios'
+import React, { useEffect, useState, useRef } from "react";
+import ReactDOM from "react-dom/client";
+import Plot from "react-plotly.js";
+import axios from "axios";
 
-type Dataset = { id: string; filename: string; size_bytes: number }
+const App = () => {
+  const [points, setPoints] = useState<number[][]>([]);
+  const [cellIds, setCellIds] = useState<string[]>([]);
+  const [clusters, setClusters] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [highlightCell, setHighlightCell] = useState<string>("");
 
-export default function App() {
-  const [datasets, setDatasets] = useState<Dataset[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const plotRef = useRef<any>(null);
 
+  // --- Fetch data ---
   useEffect(() => {
-    const load = async () => {
+    const fetchData = async () => {
       try {
-        setLoading(true)
-        setError(null)
-        const r = await axios.get('http://localhost:8000/datasets')
-        setDatasets(r.data)
-      } catch (e: any) {
-        setError(e?.message ?? 'Failed to load')
+        const res = await axios.get("http://localhost:8000/embedding/scanpy-pbmc3k");
+        console.log("✅ Data fetched:", res.data);
+
+        setPoints(res.data.umap || []);
+        setCellIds(res.data.cell_ids || []);
+        setClusters(res.data.clusters || []);
+      } catch (err) {
+        console.error("❌ Failed to fetch embedding:", err);
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
+    };
+    fetchData();
+  }, []);
+
+  if (loading) return <div style={{ padding: "2rem" }}>Loading 3D scatter...</div>;
+
+  if (!points.length) return <div style={{ padding: "2rem" }}>⚠️ No points found</div>;
+
+  // --- Group by cluster ---
+  const clusterGroups: {
+    [key: string]: { x: number[]; y: number[]; z: number[]; text: string[] };
+  } = {};
+
+  points.forEach((p, i) => {
+    const cluster = clusters[i] ?? "Unassigned";
+    if (!clusterGroups[cluster]) {
+      clusterGroups[cluster] = { x: [], y: [], z: [], text: [] };
     }
-    load()
-  }, [])
+    clusterGroups[cluster].x.push(p[0]);
+    clusterGroups[cluster].y.push(p[1]);
+    clusterGroups[cluster].z.push(p[2] ?? 0);
+    clusterGroups[cluster].text.push(`Cell: ${cellIds[i]}<br>Cluster: ${cluster}`);
+  });
+
+  const clusterNames = Object.keys(clusterGroups);
+
+  // --- Build traces ---
+  const traces = clusterNames.map((cluster) => ({
+    x: clusterGroups[cluster].x,
+    y: clusterGroups[cluster].y,
+    z: clusterGroups[cluster].z,
+    mode: "markers",
+    type: "scatter3d" as const,
+    name: `Cluster ${cluster} (n=${clusterGroups[cluster].x.length})`,
+    text: clusterGroups[cluster].text,
+    hoverinfo: "text",
+    marker: { size: 3 },
+  }));
+
+  console.log("📊 Traces built:", traces);
+
+  // --- Highlight cell ---
+  if (highlightCell && cellIds.includes(highlightCell)) {
+    const i = cellIds.indexOf(highlightCell);
+    traces.push({
+      x: [points[i][0]],
+      y: [points[i][1]],
+      z: [points[i][2] ?? 0],
+      mode: "markers+text",
+      type: "scatter3d" as const,
+      name: "Highlighted Cell",
+      text: [`🔎 ${highlightCell}`],
+      hoverinfo: "text",
+      marker: { size: 8, color: "red", symbol: "diamond" },
+    });
+  }
+
+  // --- Reset view ---
+  const resetView = () => {
+    if (plotRef.current) {
+      plotRef.current.react(traces, {
+        scene: {
+          camera: {
+            center: { x: 0, y: 0, z: 0 },
+            eye: { x: 1.5, y: 1.5, z: 1.5 },
+            up: { x: 0, y: 0, z: 1 },
+          },
+          xaxis: { title: "UMAP-1" },
+          yaxis: { title: "UMAP-2" },
+          zaxis: { title: "UMAP-3" },
+        },
+      });
+    }
+    setHighlightCell("");
+  };
 
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif', padding: 16 }}>
-      <h1>Cellarium</h1>
-      <p>Backend: <code>http://localhost:8000</code></p>
+    <div style={{ width: "100%", height: "100vh" }}>
+      <h2 style={{ textAlign: "center" }}>Cellarium 3D Embedding</h2>
 
-      {loading && <p>Loading datasets…</p>}
-      {error && <p style={{ color: 'crimson' }}>{error}</p>}
+      {/* Search + Reset */}
+      <div style={{ textAlign: "center", marginBottom: "1rem" }}>
+        <input
+          type="text"
+          placeholder="Enter Cell ID..."
+          value={highlightCell}
+          onChange={(e) => setHighlightCell(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && setHighlightCell(highlightCell.trim())}
+          style={{ padding: "0.5rem", width: "250px", marginRight: "1rem" }}
+        />
+        <button onClick={resetView} style={{ padding: "0.5rem 1rem" }}>
+          Reset View
+        </button>
+      </div>
 
-      <h2>Datasets in /data</h2>
-      {datasets.length === 0 ? (
-        <p>No .h5ad files found. Put files into the <code>data/</code> folder and refresh.</p>
-      ) : (
-        <ul>
-          {datasets.map(d => (
-            <li key={d.id}>
-              <strong>{d.id}</strong> — {d.filename} ({d.size_bytes} bytes)
-            </li>
-          ))}
-        </ul>
-      )}
+      <Plot
+        ref={plotRef}
+        data={traces}
+        layout={{
+          autosize: true,
+          height: 700,
+          legend: { title: { text: "Clusters" } },
+          scene: {
+            xaxis: { title: "UMAP-1" },
+            yaxis: { title: "UMAP-2" },
+            zaxis: { title: "UMAP-3" },
+          },
+        }}
+        style={{ width: "100%", height: "100%" }}
+        config={{ displayModeBar: true, scrollZoom: true }}
+      />
     </div>
-  )
-}
+  );
+};
+
+ReactDOM.createRoot(document.getElementById("root")!).render(<App />);
