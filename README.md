@@ -1,7 +1,5 @@
 # Cellarium
 
-# Cellarium 
-
 A lightweight web application for visualizing single-cell `.h5ad` datasets with **Scanpy** (backend) and **Plotly + React** (frontend).  
 Upload your dataset, compute embeddings/trajectories, and interactively explore them in 3D.
 
