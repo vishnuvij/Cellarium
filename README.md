@@ -63,11 +63,7 @@ docker compose up --build
 
 
 ##  Known Issues
-- `leidenalg` must be installed for clustering:
-  ```bash
-  pip install leidenalg
-  ```
-  (already handled inside Dockerfile).  
+ 
 - Large datasets may take time to embed.
 
 ---
