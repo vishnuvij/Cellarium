@@ -55,6 +55,13 @@ docker compose up --build
 
 ---
 
+##  Screenshots
+
+| Upload Interface | Cluster View | Trajectory View |
+|------------------|---------------|-----------------|
+| ![Upload Interface](img/Screenshot%202025-10-03%20005325.jpg) | ![Cluster View](img/ss2.jpg) | ![Trajectory View](img/ss3.jpg) |
+
+
 ##  Known Issues
 - `leidenalg` must be installed for clustering:
   ```bash
